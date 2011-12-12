@@ -1,0 +1,304 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<ndbx formatVersion="0.9" type="file">
+    <node exported="true" name="simplify" prototype="corevector.filter" rendered="true" x="90" y="40">
+        <param name="_code">
+            <value type="python"><![CDATA[from nodebox.graphics import Geometry, Point
+from nodebox.util.Geometry import distance
+from math import sqrt, floor
+
+EPSILON = 10e-12
+TOLERANCE = 10e-6
+
+def get_length(point):
+    l = point.x * point.x + point.y * point.y
+    return sqrt(l)
+
+def normalize(point, length=None):
+    if length is None: length = 1
+    current = get_length(point)
+    scale = current != 0 and length / current or 0
+    point = Point(point.x * scale, point.y * scale)
+    return point
+
+def add(point1, point2):
+    return Point(point1.x + point2.x, point1.y + point2.y)
+
+def substract(point1, point2):
+    return Point(point1.x - point2.x, point1.y - point2.y)
+
+def multiply(point, value):
+    return Point(point.x * value, point.y * value, point.type)
+
+def divide(point, value):
+    return Point(point.x / value, point.y / value, point.type)
+
+def negate(point):
+    return Point(-point.x, -point.y, point.type)
+
+def dot(point1, point2):
+    return point1.x * point2.x + point1.y * point2.y
+
+def is_zero(point):
+    return point.x == 0 and point.y == 0
+
+
+class Segment(object):
+    def __init__(self, *args):
+        if len(args) == 1:
+            self.point = args[0]
+            self.handle_in = Point()
+            self.handle_out = Point()
+        elif len(args) == 2:
+            self.point, self.handle_in = args
+            self.handle_out = Point()
+        elif len(args) == 3:
+            self.point, self.handle_in, self.handle_out = args
+        else:
+            self.point = Point()
+            self.handle_in = Point()
+            self.handle_out = Point()
+
+    def __eq__(self, other):
+        if other is None: return False
+        return self.x == other.x and self.y == other.y \
+            and self.handle_in == other.handle_in and self.handle_out == other.handle_out
+    
+    def _get_x(self):
+        return self.point.x
+    x = property(_get_x)
+       
+    def _get_y(self):
+        return self.point.y
+    y = property(_get_y)
+    
+    def __ne__(self, other):
+        return not self.__eq__(other)
+        
+    def __repr__(self):
+        d = {"point": self.point}
+        if not is_zero(self.handle_in):
+            d["handle_in": self.handle_in]
+        if not is_zero(self.handle_out):
+            d["handle_out": self.handle_out]
+        return unicode(d)
+                      
+                                                                                                                                                                                                                                                                                                      
+class PathFitter(object):
+    def __init__(self, path, error):
+        self.path = path
+        self.error = error
+        
+        self.segments = []
+        self.points = points = []
+
+        prev = None
+        for point in (point for point in path.points if point.isOnCurve()):
+            if prev is None or point != prev:
+                points.append(point)
+                prev = point
+        
+    def fit(self):
+        self.segments = [Segment(self.points[0])]
+        points = self.points
+        self.fit_cubic(
+            0, 
+            len(points) - 1, 
+            normalize(substract(points[1], points[0])),
+            normalize(substract(points[-2], points[-1]))
+        )
+    
+    def fit_cubic(self, first, last, tan1, tan2):
+        points = self.points
+        
+        if last - first == 1:
+            pt1 = points[first]
+            pt2 = points[last]
+            dist = distance(pt1.x, pt1.y, pt2.x, pt2.y) / 3
+            self.add_curve([
+                pt1, 
+                add(pt1, normalize(tan1, dist)),
+                add(pt2, normalize(tan2, dist)), 
+                pt2
+            ])
+            return
+            
+        u_prime = self.chord_length_parameterize(first, last)
+        max_error = max(self.error, self.error * self.error)
+        
+        for i in range(0, 5):
+            curve = self.generate_bezier(first, last, u_prime, tan1, tan2)
+            _max = self.find_max_error(first, last, curve, u_prime)
+            if _max["error"] < self.error:
+                self.add_curve(curve)
+                return
+            split = _max["index"]
+            if _max["error"] >= max_error:
+                break
+            self.reparameterize(first, last, u_prime, curve)
+            max_error = _max["error"]
+            
+        V1 = substract(points[split - 1], points[split])
+        V2 = substract(points[split], points[split + 1])
+        tan_center = normalize(divide(add(V1, V2), 2))
+        
+        self.fit_cubic(first, split, tan1, tan_center)
+        self.fit_cubic(split, last, negate(tan_center), tan2)
+        
+    def add_curve(self, curve):
+        prev = self.segments[-1]
+        prev.handle_out = curve[1]
+        self.segments.append(Segment(curve[3], curve[2]))
+        
+    def generate_bezier(self, first, last, u_prime, tan1, tan2):
+        epsilon = EPSILON
+        pt1 = self.points[first]
+        pt2 = self.points[last]
+        C = [[0, 0], [0, 0]]
+        X = [0, 0]
+        
+        l = last - first + 1
+        for i in xrange(0, l):
+            u = u_prime[i]
+	    t = 1 - u
+	    b = 3 * u * t
+	    b0 = t * t * t
+	    b1 = b * t
+	    b2 = b * u
+	    b3 = u * u * u
+	    a1 = normalize(tan1, b1)
+	    a2 = normalize(tan2, b2)
+            tmp = substract(substract(self.points[first + i], multiply(pt1, b0 + b1)), multiply(pt2, b2 + b3))
+       	    C[0][0] += dot(a1, a1)
+            C[0][1] += dot(a1, a2)
+	    C[1][0] = C[0][1]
+	    C[1][1] += dot(a2, a2)
+	    X[0] += dot(a1, tmp)
+	    X[1] += dot(a2, tmp)
+	    
+	detC0C1 = C[0][0] * C[1][1] - C[1][0] * C[0][1]
+	if abs(detC0C1) > epsilon:
+	    detC0X  = C[0][0] * X[1] - C[1][0] * X[0]
+	    detXC1  = X[0] * C[1][1] - X[1] * C[0][1]
+	    alpha1 = detXC1 / detC0C1
+	    alpha2 = detC0X / detC0C1
+	else:
+	    c0 = C[0][0] + C[0][1]
+	    c1 = C[1][0] + C[1][1]
+            if abs(c0) > epsilon:
+	        alpha1 = alpha2 = X[0] / c0
+	    elif abs(c0) > epsilon:
+	        alpha1 = alpha2 = X[1] / c1
+	    else:
+	        alpha1 = alpha2 = 0.0
+	
+	seg_length = distance(pt2.x, pt2.y, pt1.x, pt1.y)
+	epsilon *= seg_length
+	if alpha1 < epsilon or alpha2 < epsilon:
+	    alpha1 = alpha2 = seg_length / 3
+	
+	return [pt1, add(pt1, normalize(tan1, alpha1)),
+				add(pt2, normalize(tan2, alpha2)), pt2]
+				
+    def find_max_error(self, first, last, curve, u):
+        index = floor((last - first + 1) / 2)
+        max_dist = 0
+        for i in xrange(first + 1, last):
+            P = self.evaluate(3, curve, u[i - first])
+            v = substract(P, self.points[i])
+            dist = v.x * v.x + v.y * v.y
+            if dist >= max_dist:
+                max_dist = dist
+                index = i
+        return {"error": max_dist, "index": index} 
+
+    def reparameterize(self, first, last, u, curve):
+        for i in range(first, last+1):
+            u[i - first] = self.find_root(curve, self.points[i], u[i - first])
+    
+    def find_root(self, curve, point, u):
+        curve1 = []
+        curve2 = []
+        for i in range(3):
+            curve1.append(multiply(substract(curve[i + 1], curve[i]), 3))
+        for i in range(2):
+            curve2.append(multiply(substract(curve1[i + 1], curve1[i]), 2))
+        pt = self.evaluate(3, curve, u)
+        pt1 = self.evaluate(2, curve1, u)
+        pt2 = self.evaluate(1, curve2, u)
+        diff = substract(pt, point)
+        df = dot(pt1, pt1) + dot(diff, pt2)
+        
+        if abs(df) < TOLERANCE:
+            return u
+        return u - dot(diff, pt1) / df
+                
+    def evaluate(self, degree, curve, t):
+        tmp = curve[:]
+        
+        for i in range(1, degree+1):
+            for j in range(degree+1 - i):
+                tmp[j] = add(multiply(tmp[j], 1 - t), multiply(tmp[j + 1], t))
+        
+        return tmp[0]
+         
+    def chord_length_parameterize(self, first, last):
+        points = self.points
+        
+        u = [0 for y in xrange(last - first + 1)]
+        for i in xrange(first + 1, last+1):
+            pt0 = points[i]
+            pt1 = points[i - 1]
+            u[i - first] = u[i - first - 1] + distance(pt0.x, pt0.y, pt1.x, pt1.y)
+        
+        m = last - first
+        for i in xrange(1, m+1):
+            u[i] /= u[m]
+        
+        return u
+
+        
+def simplified_path(path, tolerance=2.5):
+    new_path = path.cloneAndClear()
+    
+    for contour in path.contours:
+        fitter = PathFitter(contour, tolerance)
+        fitter.fit()
+        segments = fitter.segments
+        handle_out = None
+    
+        p = Path()
+        for segment in segments:
+            point = segment.point
+            x = point.x
+            y = point.y
+            handle_in = segment.handle_in
+        
+            if (handle_out is None):
+                p.moveto(x, y)
+            else:
+                if is_zero(handle_in) and is_zero(handle_out):
+                    p.lineTo(x, y)
+                else:
+                    p.curveto(outX, outY, handle_in.x, handle_in.y, x, y)
+                
+            handle_out = segment.handle_out
+            outX = handle_out.x
+            outY = handle_out.y
+        if contour.closed:
+            p.close()
+        new_path.add(p.contours[0])
+    return new_path           
+        
+def cook(self):
+    if self.shape is None: return None
+    
+    g = Geometry()
+    for path in self.shape.paths:
+        g.add(simplified_path(path, self.tolerance))
+    return g]]></value>
+        </param>
+        <param name="tolerance" type="int">
+            <value>10</value>
+        </param>
+    </node>
+</ndbx>
