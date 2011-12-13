@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <ndbx formatVersion="0.9" type="file">
-    <node exported="true" name="simplify" prototype="corevector.filter" rendered="true" x="90" y="40">
+    <node exported="true" name="simplify" prototype="corevector.filter" x="90" y="40">
+        <description>Smoothen and simplify a shape by removing extraneous points.</description>
         <param name="_code">
             <value type="python"><![CDATA[from nodebox.graphics import Geometry, Point
 from nodebox.util.Geometry import distance
