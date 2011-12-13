@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<ndbx formatVersion="0.9" type="file">
+    <node exported="true" name="putonshape" prototype="corevector.filter" rendered="true" x="70" y="30">
+        <description>Move a shape onto the outline of another shape at a specified position.</description>
+        <port name="template"/>
+        <param name="_code">
+            <value type="python"><![CDATA[from nodebox.graphics import Geometry, Transform
+from nodebox.util.Geometry import angle
+
+def cook(self):
+    if self.shape is None: return None
+    if self.template is None: return self.shape.clone()
+    
+    if self.percentage < 100:
+        pos = self.percentage % 100 / 100
+    else: pos = 1.0
+        
+    g = Geometry()
+    t = Transform()
+    pt = self.template.pointAt(pos)
+    t.translate(pt.x, pt.y)
+    
+    if self.adjust_angle:
+        pt2 = self.template.pointAt(pos + 0.00001)
+        a = angle(pt2.x, pt2.y, pt.x, pt.y)
+        t.rotate(a - 180)
+        
+    return t.map(self.shape)]]></value>
+        </param>
+        <param name="_image">
+            <value>putonshape.png</value>
+        </param>
+        <param bounding="hard" max="100.0" min="0.0" name="percentage" type="float">
+            <value>0.0</value>
+        </param>
+        <param name="adjust_angle" type="int" widget="toggle">
+            <value>1</value>
+        </param>
+    </node>
+</ndbx>
