@@ -297,6 +297,9 @@ def cook(self):
         g.add(simplified_path(path, self.tolerance))
     return g]]></value>
         </param>
+        <param name="_image">
+            <value>simplify.png</value>
+        </param>
         <param name="tolerance" type="int">
             <value>10</value>
         </param>
