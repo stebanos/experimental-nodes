@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<ndbx formatVersion="0.9" type="file">
+    <node exported="true" name="combine" prototype="corevector.merge" rendered="true" x="150" y="110">
+        <description>Combine multiple geometries together in one path.</description>
+        <param name="_code">
+            <value type="python"><![CDATA[from nodebox.graphics import Path, Geometry
+
+def cook(self):
+    p = Path()
+    if self.shapes is None: return Geometry()
+    for shape in self.shapes:
+        if shape is None: continue
+        for path in shape.paths:
+            for contour in path.contours:
+                p.add(contour.clone())
+    p.fillColor = self.fill
+    if self.strokeWidth > 0:
+        p.strokeColor = self.stroke
+        p.strokeWidth = self.strokeWidth
+    else:
+        p.strokeColor = None
+    return p.asGeometry()]]></value>
+        </param>
+        <param name="_image">
+            <value>combine.png</value>
+        </param>
+        <param name="fill" type="color">
+            <value>#000000ff</value>
+        </param>
+        <param name="stroke" type="color">
+            <value>#000000ff</value>
+        </param>
+        <param bounding="hard" label="Stroke Width" min="0.0" name="strokeWidth" type="float">
+            <value>0.0</value>
+        </param>
+    </node>
+</ndbx>
